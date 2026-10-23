@@ -57,8 +57,8 @@ jobs:
                 -DFFMPEG_ROOT=/opt/ffmpeg-static \
                 -DCMAKE_BUILD_TYPE=Release
               cmake --build build/cuda-gl --config Release --parallel
-              if readelf -d build/cuda-gl/libmrt_cuda_gl.so | grep -E 'libavutil|libcudart'; then
-                echo 'bridge has an unexpected dynamic FFmpeg/CUDA dependency'
+              if readelf -d build/cuda-gl/libmrt_cuda_gl.so | grep -E "libavutil|libcudart"; then
+                echo "bridge has an unexpected dynamic FFmpeg/CUDA dependency"
                 exit 1
               fi
             '
