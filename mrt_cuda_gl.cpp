@@ -1,0 +1,122 @@
+// Windows CUDA/OpenGL interop bridge for the Java video pipeline.
+// Build this file as mrt_cuda_gl.dll and place it next to the application.
+// It deliberately exposes only AVFrame retain/release and NV12 upload; no
+// CUDA pointer is ever mapped into a Java ByteBuffer.
+
+#include <jni.h>
+
+extern "C" {
+#include <libavutil/frame.h>
+#include <libavutil/hwcontext.h>
+}
+
+#include <cuda_runtime_api.h>
+#include <cuda_gl_interop.h>
+#include <GL/gl.h>
+
+#include <cstdint>
+
+namespace {
+
+struct FrameRef {
+    AVFrame* frame;
+};
+
+bool cudaFrame(const AVFrame* frame) {
+    if (frame == nullptr || frame->format != AV_PIX_FMT_CUDA ||
+        frame->hw_frames_ctx == nullptr || frame->data[0] == nullptr) {
+        return false;
+    }
+    const auto* hwFrames = reinterpret_cast<const AVHWFramesContext*>(frame->hw_frames_ctx->data);
+    return hwFrames != nullptr && hwFrames->device_ref != nullptr;
+}
+
+bool copyToTexture(const void* source, size_t pitch, int width, int height, GLuint texture) {
+    cudaGraphicsResource* resource = nullptr;
+    cudaError_t status = cudaGraphicsGLRegisterImage(
+            &resource, texture, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsWriteDiscard);
+    if (status != cudaSuccess) {
+        return false;
+    }
+
+    status = cudaGraphicsMapResources(1, &resource, 0);
+    if (status != cudaSuccess) {
+        cudaGraphicsUnregisterResource(resource);
+        return false;
+    }
+
+    cudaArray_t array = nullptr;
+    status = cudaGraphicsSubResourceGetMappedArray(&array, resource, 0, 0);
+    if (status == cudaSuccess) {
+        status = cudaMemcpy2DToArray(array, 0, 0, source, pitch,
+                                     static_cast<size_t>(width),
+                                     static_cast<size_t>(height),
+                                     cudaMemcpyDeviceToDevice);
+    }
+
+    cudaGraphicsUnmapResources(1, &resource, 0);
+    cudaGraphicsUnregisterResource(resource);
+    return status == cudaSuccess;
+}
+
+} // namespace
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_org_client_video_grabber_CudaGlInterop_nativeSelfTest(JNIEnv*, jclass) {
+    int count = 0;
+    return cudaGetDeviceCount(&count) == cudaSuccess && count > 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_client_video_grabber_CudaGlInterop_retainFrame__J(JNIEnv*, jclass, jlong address) {
+    const auto* source = reinterpret_cast<const AVFrame*>(static_cast<uintptr_t>(address));
+    if (!cudaFrame(source)) {
+        return 0;
+    }
+
+    AVFrame* retained = av_frame_alloc();
+    if (retained == nullptr || av_frame_ref(retained, source) < 0) {
+        if (retained != nullptr) {
+            av_frame_free(&retained);
+        }
+        return 0;
+    }
+
+    auto* ref = new FrameRef{retained};
+    return static_cast<jlong>(reinterpret_cast<uintptr_t>(ref));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_client_video_grabber_CudaGlInterop_releaseFrameNative(JNIEnv*, jclass, jlong address) {
+    auto* ref = reinterpret_cast<FrameRef*>(static_cast<uintptr_t>(address));
+    if (ref == nullptr) {
+        return;
+    }
+    av_frame_free(&ref->frame);
+    delete ref;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_org_client_video_grabber_CudaGlInterop_uploadNv12Native(
+        JNIEnv*, jclass, jlong address, jint yTexture, jint uvTexture) {
+    auto* ref = reinterpret_cast<FrameRef*>(static_cast<uintptr_t>(address));
+    if (ref == nullptr || !cudaFrame(ref->frame) || ref->frame->width <= 0 ||
+        ref->frame->height <= 0 || ref->frame->linesize[0] <= 0) {
+        return JNI_FALSE;
+    }
+
+    const int width = ref->frame->width;
+    const int height = ref->frame->height;
+    const size_t pitch = static_cast<size_t>(ref->frame->linesize[0]);
+    const auto* y = reinterpret_cast<const void*>(ref->frame->data[0]);
+    const auto* uv = ref->frame->data[1] != nullptr
+                     ? reinterpret_cast<const void*>(ref->frame->data[1])
+                     : reinterpret_cast<const void*>(
+                             reinterpret_cast<const std::uint8_t*>(y) + pitch * height);
+
+    if (!copyToTexture(y, pitch, width, height, static_cast<GLuint>(yTexture))) {
+        return JNI_FALSE;
+    }
+    return copyToTexture(uv, pitch, width, height / 2, static_cast<GLuint>(uvTexture))
+           ? JNI_TRUE : JNI_FALSE;
+}
