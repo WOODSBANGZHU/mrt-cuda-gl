@@ -7,7 +7,7 @@ package used by the application and the CUDA Toolkit:
 Windows:
 
 ```powershell
-cmake -S native/cuda_gl -B build/cuda-gl -DFFMPEG_ROOT=C:/ffmpeg
+cmake -S . -B build/cuda-gl -DFFMPEG_ROOT=C:/ffmpeg
 cmake --build build/cuda-gl --config Release
 ```
 
@@ -15,11 +15,11 @@ Ubuntu:
 
 ```bash
 sudo apt install build-essential cmake libavutil-dev libgl-dev openjdk-8-jdk
-cmake -S native/cuda_gl -B build/cuda-gl -DFFMPEG_ROOT=/opt/ffmpeg
+cmake -S . -B build/cuda-gl
 cmake --build build/cuda-gl --config Release -j
 ```
 
-The repository also contains [Linux CI](../../.github/workflows/linux-ci.yml),
+The repository also contains [Linux CI](.github/workflows/linux-ci.yml),
 which builds `libmrt_cuda_gl.so` in a CUDA development container and publishes
 it as a downloadable workflow artifact. The hosted runner has no NVIDIA GPU,
 so the workflow verifies compilation only; runtime CUDA/OpenGL validation must

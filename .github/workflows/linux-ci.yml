@@ -8,21 +8,6 @@ permissions:
   contents: read
 
 jobs:
-  java:
-    name: Java tests
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Java 8
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '8'
-          cache: maven
-      - name: Run tests
-        run: mvn -B test
-
   native:
     name: Build CUDA/OpenGL bridge
     runs-on: ubuntu-22.04
@@ -42,7 +27,7 @@ jobs:
               apt-get install -y --no-install-recommends \
                 build-essential cmake pkg-config libavutil-dev libgl-dev \
                 openjdk-17-jdk
-              cmake -S native/cuda_gl -B build/cuda-gl \
+              cmake -S . -B build/cuda-gl \
                 -DCMAKE_BUILD_TYPE=Release
               cmake --build build/cuda-gl --config Release --parallel
             '
