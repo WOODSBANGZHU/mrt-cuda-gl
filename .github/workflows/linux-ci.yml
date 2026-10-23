@@ -27,6 +27,7 @@ jobs:
               apt-get install -y --no-install-recommends \
                 build-essential cmake pkg-config libavutil-dev libgl-dev \
                 openjdk-17-jdk
+              export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
               cmake -S . -B build/cuda-gl \
                 -DCMAKE_BUILD_TYPE=Release
               cmake --build build/cuda-gl --config Release --parallel

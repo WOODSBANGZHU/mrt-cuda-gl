@@ -9,7 +9,25 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(CUDAToolkit REQUIRED)
-find_package(JNI REQUIRED)
+
+# The bridge only needs JNI headers. Find them explicitly because CMake's
+# FindJNI also requires AWT/JVM libraries, which are not present in minimal
+# CUDA build containers even when a full JDK is installed.
+find_path(JNI_INCLUDE_DIR jni.h
+        HINTS
+        "$ENV{JAVA_HOME}"
+        /usr/lib/jvm/default-java
+        /usr/lib/jvm/java-17-openjdk-amd64
+        PATH_SUFFIXES include)
+find_path(JNI_PLATFORM_INCLUDE_DIR jni_md.h
+        HINTS
+        "$ENV{JAVA_HOME}"
+        /usr/lib/jvm/default-java
+        /usr/lib/jvm/java-17-openjdk-amd64
+        PATH_SUFFIXES include/linux include)
+if (NOT JNI_INCLUDE_DIR OR NOT JNI_PLATFORM_INCLUDE_DIR)
+    message(FATAL_ERROR "Could not find JNI headers (jni.h and jni_md.h); set JAVA_HOME to a JDK")
+endif()
 
 if (UNIX AND NOT APPLE)
     find_package(OpenGL REQUIRED)
@@ -17,7 +35,8 @@ endif()
 
 add_library(mrt_cuda_gl SHARED mrt_cuda_gl.cpp)
 target_include_directories(mrt_cuda_gl PRIVATE
-        ${JNI_INCLUDE_DIRS}
+        ${JNI_INCLUDE_DIR}
+        ${JNI_PLATFORM_INCLUDE_DIR}
         ${CUDAToolkit_INCLUDE_DIRS})
 target_link_libraries(mrt_cuda_gl PRIVATE CUDA::cudart)
 
