@@ -43,15 +43,19 @@ target_include_directories(mrt_cuda_gl PRIVATE
         ${CUDAToolkit_INCLUDE_DIRS})
 if (UNIX AND NOT APPLE)
     # Embed the CUDA runtime so Ubuntu deployment only needs the NVIDIA driver.
-    target_link_libraries(mrt_cuda_gl PRIVATE CUDA::cudart_static Threads::Threads ${CMAKE_DL_LIBS})
+    target_link_libraries(mrt_cuda_gl PRIVATE CUDA::cudart_static Threads::Threads ${CMAKE_DL_LIBS} m)
 else()
     target_link_libraries(mrt_cuda_gl PRIVATE CUDA::cudart)
 endif()
 
 if (DEFINED FFMPEG_ROOT AND NOT "${FFMPEG_ROOT}" STREQUAL "")
     target_include_directories(mrt_cuda_gl PRIVATE ${FFMPEG_ROOT}/include)
-    target_link_directories(mrt_cuda_gl PRIVATE ${FFMPEG_ROOT}/lib)
-    target_link_libraries(mrt_cuda_gl PRIVATE avutil)
+    find_library(AVUTIL_LIBRARY
+            NAMES avutil
+            PATHS ${FFMPEG_ROOT}/lib
+            NO_DEFAULT_PATH
+            REQUIRED)
+    target_link_libraries(mrt_cuda_gl PRIVATE ${AVUTIL_LIBRARY})
 elseif (UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)

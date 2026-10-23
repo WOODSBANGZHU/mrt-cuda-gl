@@ -25,12 +25,42 @@ jobs:
               export DEBIAN_FRONTEND=noninteractive
               apt-get update
               apt-get install -y --no-install-recommends \
-                build-essential cmake pkg-config libavutil-dev libgl-dev \
-                openjdk-17-jdk
+                build-essential cmake pkg-config libgl-dev openjdk-17-jdk \
+                yasm nasm curl ca-certificates xz-utils
               export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+              curl -fsSL https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz \
+                -o /tmp/ffmpeg-7.1.1.tar.xz
+              tar -xf /tmp/ffmpeg-7.1.1.tar.xz -C /tmp
+              cd /tmp/ffmpeg-7.1.1
+              ./configure \
+                --prefix=/opt/ffmpeg-static \
+                --disable-programs \
+                --disable-doc \
+                --disable-debug \
+                --disable-shared \
+                --enable-static \
+                --disable-avcodec \
+                --disable-avformat \
+                --disable-avdevice \
+                --disable-avfilter \
+                --disable-swscale \
+                --disable-swresample \
+                --disable-postproc \
+                --disable-network \
+                --disable-protocols \
+                --disable-indevs \
+                --disable-outdevs \
+                --disable-filters
+              make -j"$(nproc)" install
+              cd /workspace
               cmake -S . -B build/cuda-gl \
+                -DFFMPEG_ROOT=/opt/ffmpeg-static \
                 -DCMAKE_BUILD_TYPE=Release
               cmake --build build/cuda-gl --config Release --parallel
+              if readelf -d build/cuda-gl/libmrt_cuda_gl.so | grep -E 'libavutil|libcudart'; then
+                echo 'bridge has an unexpected dynamic FFmpeg/CUDA dependency'
+                exit 1
+              fi
             '
       - name: Upload native bridge
         uses: actions/upload-artifact@v4

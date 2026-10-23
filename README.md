@@ -27,10 +27,10 @@ be performed on the deployment machine or a self-hosted GPU runner.
 
 Place `mrt_cuda_gl.dll` beside the Windows application executable, or
 `libmrt_cuda_gl.so` in the Ubuntu application's library directory. The native
-FFmpeg `avutil` library must be discoverable by the platform's loader. The
-Linux CI build statically embeds the CUDA runtime, so an Ubuntu deployment only
-needs the NVIDIA driver; the Windows build keeps the normal CUDA runtime
-dependency. The Java side can use another library name with
+The Linux CI build uses FFmpeg 7.1.1 headers and statically embeds both
+`libavutil` and the CUDA runtime, so an Ubuntu deployment only needs the
+NVIDIA driver. The Windows build keeps the normal FFmpeg/CUDA runtime
+dependencies. The Java side can use another library name with
 `-Dmrt.cuda.gl.library=...`.
 
 The bridge retains each CUDA `AVFrame` with `av_frame_ref`. On the OpenGL
