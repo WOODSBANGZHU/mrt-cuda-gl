@@ -9,6 +9,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(CUDAToolkit REQUIRED)
+if (UNIX AND NOT APPLE)
+    find_package(Threads REQUIRED)
+endif()
 
 # The bridge only needs JNI headers. Find them explicitly because CMake's
 # FindJNI also requires AWT/JVM libraries, which are not present in minimal
@@ -38,7 +41,12 @@ target_include_directories(mrt_cuda_gl PRIVATE
         ${JNI_INCLUDE_DIR}
         ${JNI_PLATFORM_INCLUDE_DIR}
         ${CUDAToolkit_INCLUDE_DIRS})
-target_link_libraries(mrt_cuda_gl PRIVATE CUDA::cudart)
+if (UNIX AND NOT APPLE)
+    # Embed the CUDA runtime so Ubuntu deployment only needs the NVIDIA driver.
+    target_link_libraries(mrt_cuda_gl PRIVATE CUDA::cudart_static Threads::Threads ${CMAKE_DL_LIBS})
+else()
+    target_link_libraries(mrt_cuda_gl PRIVATE CUDA::cudart)
+endif()
 
 if (DEFINED FFMPEG_ROOT AND NOT "${FFMPEG_ROOT}" STREQUAL "")
     target_include_directories(mrt_cuda_gl PRIVATE ${FFMPEG_ROOT}/include)
