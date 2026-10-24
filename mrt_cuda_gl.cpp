@@ -22,13 +22,19 @@ struct FrameRef {
     AVFrame* frame;
 };
 
+const AVHWFramesContext* hwFrames(const AVFrame* frame) {
+    return frame != nullptr && frame->hw_frames_ctx != nullptr
+           ? reinterpret_cast<const AVHWFramesContext*>(frame->hw_frames_ctx->data)
+           : nullptr;
+}
+
 bool cudaFrame(const AVFrame* frame) {
     if (frame == nullptr || frame->format != AV_PIX_FMT_CUDA ||
         frame->hw_frames_ctx == nullptr || frame->data[0] == nullptr) {
         return false;
     }
-    const auto* hwFrames = reinterpret_cast<const AVHWFramesContext*>(frame->hw_frames_ctx->data);
-    return hwFrames != nullptr && hwFrames->device_ref != nullptr;
+    const auto* context = hwFrames(frame);
+    return context != nullptr && context->device_ref != nullptr;
 }
 
 bool copyToTexture(const void* source, size_t pitch, int width, int height, GLuint texture) {
@@ -108,15 +114,28 @@ Java_org_client_video_grabber_CudaGlInterop_uploadNv12Native(
     const int width = ref->frame->width;
     const int height = ref->frame->height;
     const size_t pitch = static_cast<size_t>(ref->frame->linesize[0]);
+    const auto* context = hwFrames(ref->frame);
+    if (context == nullptr ||
+        (context->sw_format != AV_PIX_FMT_NV12 && context->sw_format != AV_PIX_FMT_P010LE)) {
+        return JNI_FALSE;
+    }
+    const bool p010 = context->sw_format == AV_PIX_FMT_P010LE;
+    const int bytesPerSample = p010 ? 2 : 1;
+    const size_t rowBytes = static_cast<size_t>(width) * bytesPerSample;
+    if (pitch < rowBytes) {
+        return JNI_FALSE;
+    }
     const auto* y = reinterpret_cast<const void*>(ref->frame->data[0]);
     const auto* uv = ref->frame->data[1] != nullptr
                      ? reinterpret_cast<const void*>(ref->frame->data[1])
                      : reinterpret_cast<const void*>(
                              reinterpret_cast<const std::uint8_t*>(y) + pitch * height);
 
-    if (!copyToTexture(y, pitch, width, height, static_cast<GLuint>(yTexture))) {
+    if (!copyToTexture(y, pitch, static_cast<int>(rowBytes), height,
+                       static_cast<GLuint>(yTexture))) {
         return JNI_FALSE;
     }
-    return copyToTexture(uv, pitch, width, height / 2, static_cast<GLuint>(uvTexture))
+    return copyToTexture(uv, pitch, static_cast<int>(rowBytes), height / 2,
+                         static_cast<GLuint>(uvTexture))
            ? JNI_TRUE : JNI_FALSE;
 }
