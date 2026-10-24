@@ -15,6 +15,7 @@ extern "C" {
 #include <GL/gl.h>
 
 #include <cstdint>
+#include <mutex>
 
 namespace {
 
@@ -65,6 +66,27 @@ bool copyToTexture(const void* source, size_t pitch, int width, int height, GLui
     return status == cudaSuccess;
 }
 
+bool ensureInteropDevice() {
+    static std::once_flag once;
+    static bool ready = false;
+    std::call_once(once, [] {
+        cudaError_t status = cudaGLSetGLDevice(0);
+        if (status == cudaSuccess) {
+            ready = true;
+            return;
+        }
+        // cudaGetDeviceCount() is used by the Java-side self-test before a
+        // GL context exists. If that initialized the runtime already,
+        // cudaGLSetGLDevice reports cudaErrorSetOnActiveProcess; accept it
+        // only when the active device is the requested one.
+        if (status == cudaErrorSetOnActiveProcess) {
+            int device = -1;
+            ready = cudaGetDevice(&device) == cudaSuccess && device == 0;
+        }
+    });
+    return ready;
+}
+
 } // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -108,6 +130,9 @@ Java_org_client_video_grabber_CudaGlInterop_uploadNv12Native(
     auto* ref = reinterpret_cast<FrameRef*>(static_cast<uintptr_t>(address));
     if (ref == nullptr || !cudaFrame(ref->frame) || ref->frame->width <= 0 ||
         ref->frame->height <= 0 || ref->frame->linesize[0] <= 0) {
+        return JNI_FALSE;
+    }
+    if (!ensureInteropDevice()) {
         return JNI_FALSE;
     }
 
