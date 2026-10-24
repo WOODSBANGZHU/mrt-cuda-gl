@@ -113,7 +113,10 @@ Java_org_client_video_grabber_CudaGlInterop_uploadNv12Native(
 
     const int width = ref->frame->width;
     const int height = ref->frame->height;
-    const size_t pitch = static_cast<size_t>(ref->frame->linesize[0]);
+    const size_t yPitch = static_cast<size_t>(ref->frame->linesize[0]);
+    const size_t uvPitch = ref->frame->linesize[1] > 0
+                           ? static_cast<size_t>(ref->frame->linesize[1])
+                           : yPitch;
     const auto* context = hwFrames(ref->frame);
     if (context == nullptr ||
         (context->sw_format != AV_PIX_FMT_NV12 && context->sw_format != AV_PIX_FMT_P010LE)) {
@@ -122,20 +125,20 @@ Java_org_client_video_grabber_CudaGlInterop_uploadNv12Native(
     const bool p010 = context->sw_format == AV_PIX_FMT_P010LE;
     const int bytesPerSample = p010 ? 2 : 1;
     const size_t rowBytes = static_cast<size_t>(width) * bytesPerSample;
-    if (pitch < rowBytes) {
+    if (yPitch < rowBytes || uvPitch < rowBytes) {
         return JNI_FALSE;
     }
     const auto* y = reinterpret_cast<const void*>(ref->frame->data[0]);
     const auto* uv = ref->frame->data[1] != nullptr
                      ? reinterpret_cast<const void*>(ref->frame->data[1])
                      : reinterpret_cast<const void*>(
-                             reinterpret_cast<const std::uint8_t*>(y) + pitch * height);
+                             reinterpret_cast<const std::uint8_t*>(y) + yPitch * height);
 
-    if (!copyToTexture(y, pitch, static_cast<int>(rowBytes), height,
+    if (!copyToTexture(y, yPitch, static_cast<int>(rowBytes), height,
                        static_cast<GLuint>(yTexture))) {
         return JNI_FALSE;
     }
-    return copyToTexture(uv, pitch, static_cast<int>(rowBytes), height / 2,
+    return copyToTexture(uv, uvPitch, static_cast<int>(rowBytes), height / 2,
                          static_cast<GLuint>(uvTexture))
            ? JNI_TRUE : JNI_FALSE;
 }
